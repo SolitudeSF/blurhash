@@ -1,0 +1,2 @@
+tests/t*
+!tests/*.nim
