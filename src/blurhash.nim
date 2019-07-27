@@ -23,19 +23,32 @@ func decode83(s: string): int =
   for c in s:
     result = result * 83 + base83chars.find(c)
 
-func toLinear(n: uint8): float =
-  result = n.float / 255.0
+func toXYZ(n: uint8): float32 =
+  result = n.float32 / 255.0
   if result <= 0.04045:
-    result /= 12.92
+    result = result / 12.92
   else:
     result = pow((result + 0.055) / 1.055, 2.4)
 
-func toSrgb(n: float): uint8 =
-  let v = max(0.0, min(1.0, n))
-  if v <= 0.0031308:
-    result = uint8(v * 12.92 * 255.0 + 0.5)
+func toXYZ(n: float32): float32 =
+  if n <= 0.04045:
+     n / 12.92
   else:
-    result = uint8((pow(v, 1.0 / 2.4) * 1.055  - 0.055) * 255.0 + 0.5)
+    pow((n + 0.055) / 1.055, 2.4)
+
+func toFloatSrgb(n: float32): float32 =
+  let v = n.clamp(0, 1)
+  if v <= 0.0031308:
+    (v * 12.92 * 255.0 + 0.5) / 255.0
+  else:
+    ((pow(v, 1.0 / 2.4) * 1.055  - 0.055) * 255.0 + 0.5) / 255.0
+
+func toUintSrgb(n: float32): uint8 =
+  let v = n.clamp(0, 1)
+  if v <= 0.0031308:
+    uint8(v * 12.92 * 255.0 + 0.5)
+  else:
+    uint8((pow(v, 1.0 / 2.4) * 1.055  - 0.055) * 255.0 + 0.5)
 
 func components*(s: string): tuple[x, y: int] =
   ## Returns x, y components of given blurhash
@@ -45,7 +58,7 @@ func components*(s: string): tuple[x, y: int] =
   if s.len != 4 + 2 * result.x * result.y:
     raise newException(ValueError, "Invalid Blurhash string.")
 
-func encode*(img: Image, componentsX = 4, componentsY = 4): string =
+func encode*[T: Color](img: Image[T], componentsX = 4, componentsY = 4): string =
   ## Calculates Blurhash for an image using the given x and y component counts.
   ##
   ## Component counts must be between 1 and 9 inclusive.
@@ -67,9 +80,9 @@ func encode*(img: Image, componentsX = 4, componentsY = 4): string =
         for x in 0..<img.width:
           let basis = normFactor * cos(PI * i.float * x.float / img.width.float) *
                                    cos(PI * j.float * y.float / img.height.float)
-          comp[0] += basis * img[x + yw][0].toLinear
-          comp[1] += basis * img[x + yw][1].toLinear
-          comp[2] += basis * img[x + yw][2].toLinear
+          comp[0] += basis * img[x + yw][0].toXYZ
+          comp[1] += basis * img[x + yw][1].toXYZ
+          comp[2] += basis * img[x + yw][2].toXYZ
 
       comp[0] /= len
       comp[1] /= len
@@ -80,8 +93,8 @@ func encode*(img: Image, componentsX = 4, componentsY = 4): string =
         maxComponent = max [maxComponent, abs comp[0], abs comp[1], abs comp[2]]
 
   let
-    dcValue = (comps[0][0].toSrgb.int shl 16) +
-              (comps[0][1].toSrgb.int shl 8) + comps[0][2].toSrgb.int
+    dcValue = (comps[0][0].toUintSrgb.int shl 16) +
+              (comps[0][1].toUintSrgb.int shl 8) + comps[0][2].toUintSrgb.int
     quantMaxValue = int max(0, min(82, floor(maxComponent * 166 - 0.5)))
 
   var normMaxValue: float
@@ -104,7 +117,7 @@ func encode*(img: Image, componentsX = 4, componentsY = 4): string =
                int(max(0, min(18, floor(signPow(comps[i][2] / normMaxValue, 0.5) * 9 + 9.5))))).
                encode83(2)
 
-func decode*(s: string, width, height: int, punch = 1.0): Image[ColorRGB] =
+func decode*[T: Color](s: string, width, height: int, punch = 1.0): Image[T] =
   ## Decodes given blurhash to an RGB image with specified dimensions
   ##
   ## Punch parameter can be used to increase/decrease contrast of the resulting image
@@ -114,11 +127,11 @@ func decode*(s: string, width, height: int, punch = 1.0): Image[ColorRGB] =
     maxValue = float(quantMaxValue + 1) / 166.0 * punch
 
   let dcValue = s[2..5].decode83
-  var colors = newSeq[array[3, float]](sizeX * sizeY)
+  var colors = newSeq[array[3, float32]](sizeX * sizeY)
 
-  colors[0] = [(dcValue shr 16).uint8.toLinear,
-               ((dcValue shr 8) and 255).uint8.toLinear,
-               (dcValue and 255).uint8.toLinear]
+  colors[0] = [(dcValue shr 16).uint8.toXYZ,
+               ((dcValue shr 8) and 255).uint8.toXYZ,
+               (dcValue and 255).uint8.toXYZ]
 
   for i in 1..colors.high:
     let acValue = s[4 + i * 2..5 + i * 2].decode83
@@ -126,7 +139,7 @@ func decode*(s: string, width, height: int, punch = 1.0): Image[ColorRGB] =
     colors[i][1] = signPow((float((acValue div 19) mod 19) - 9) / 9, 2) * maxValue
     colors[i][2] = signPow((float(acValue mod 19) - 9) / 9, 2) * maxValue
 
-  result = initImage[ColorRGB](width, height)
+  result = initImage[T](width, height)
 
   for y in 0..<height:
     let yw = y * width
@@ -142,7 +155,14 @@ func decode*(s: string, width, height: int, punch = 1.0): Image[ColorRGB] =
           pixel[0] += color[0] * basis
           pixel[1] += color[1] * basis
           pixel[2] += color[2] * basis
-
-      result[x + yw][0] = pixel[0].toSrgb
-      result[x + yw][1] = pixel[1].toSrgb
-      result[x + yw][2] = pixel[2].toSrgb
+      let xyw = x + yw
+      when T is ColorRGBFAny:
+        result[xyw][0] = pixel[0].toFloatSrgb
+        result[xyw][1] = pixel[1].toFloatSrgb
+        result[xyw][2] = pixel[2].toFloatSrgb
+      else:
+        result[xyw][0] = pixel[0].toUintSrgb
+        result[xyw][1] = pixel[1].toUintSrgb
+        result[xyw][2] = pixel[2].toUintSrgb
+      when T is ColorA:
+        result[xyw][3] = T.maxComponentValue

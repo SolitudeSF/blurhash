@@ -5,7 +5,7 @@ setCurrentDir getAppDir()
 
 suite "Blurhash":
   let
-    image = loadImage[ColorRGB] "image.png"
+    image = loadImage[ColorRGBAF] "image.png"
     blur = image.encode
 
   test "Components":
@@ -18,5 +18,5 @@ suite "Blurhash":
     check image.encode(1, 1) == "00Q]$m"
 
   test "Decoding":
-    let blurred = blur.decode(400, 400)
-    check blurred == loadImage[ColorRGB] "blurred.png"
+    let blurred = decode[ColorRGBU](blur, 400, 400)
+    check blurred == loadImage[ColorRGBU] "blurred.png"
