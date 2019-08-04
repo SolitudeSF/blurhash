@@ -102,7 +102,6 @@ func encode*[T: Color](img: Image[T], componentsX = 4, componentsY = 4): string 
   result &= encode83(componentsX - 1 + (componentsY - 1) * 9, 1)
 
   if comps.len > 1:
-    debugEcho "here"
     normMaxValue = float(quantMaxValue + 1) / 166.0
     result &= quantMaxValue.encode83(1)
   else:
