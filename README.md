@@ -33,7 +33,7 @@ This snippet hashes following image into this compact string: `UrQ]$mfQ~qj@ocofW
 ```nim
 import blurhash, imageman/images
 
-let image = "UrQ]$mfQ~qj@ocofWFWB?bj[D%azf6WBj[t7".decode(500, 500)
+let image = "UrQ]$mfQ~qj@ocofWFWB?bj[D%azf6WBj[t7".decode[ColorRGBU](500, 500)
 
 image.savePNG "blurred.png"
 ```
