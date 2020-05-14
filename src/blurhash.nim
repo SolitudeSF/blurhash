@@ -1,7 +1,20 @@
 import math
 import imageman/[images, colors]
 
-const base83chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz#$%*+,-.:;=?@[]^_{|}~"
+const base83chars = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B',
+  'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q',
+  'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f',
+  'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u',
+  'v', 'w', 'x', 'y', 'z', '#', '$', '%', '*', '+', ',', '-', '.', ':', ';',
+  '=', '?', '@', '[', ']', '^', '_', '{', '|', '}', '~']
+
+template matchingRGB[T: Color](t: typedesc[T]): typedesc =
+  when T is ColorHSL:
+    ColorRGBF
+  elif T is (ColorHSLuv | ColorHPLuv):
+    ColorRGBF64
+  else:
+    T
 
 func intPow(a, b: int): int =
   result = 1
@@ -36,7 +49,7 @@ func toXYZ(n: float32): float32 =
   else:
     pow((n + 0.055) / 1.055, 2.4)
 
-func toFloatSrgb(n: float32): float32 =
+func toFloatSrgb[T: float32 | float64](n: T): T =
   let v = n.clamp(0, 1)
   if v <= 0.0031308:
     (v * 12.92 * 255.0 + 0.5) / 255.0
@@ -138,7 +151,7 @@ func decode*[T: Color](s: string, width, height: int, punch = 1.0): Image[T] =
     colors[i][1] = signPow((float((acValue div 19) mod 19) - 9) / 9, 2) * maxValue
     colors[i][2] = signPow((float(acValue mod 19) - 9) / 9, 2) * maxValue
 
-  result = initImage[T](width, height)
+  var r = initImage[T.matchingRGB](width, height)
 
   for y in 0..<height:
     let yw = y * width
@@ -155,13 +168,18 @@ func decode*[T: Color](s: string, width, height: int, punch = 1.0): Image[T] =
           pixel[1] += color[1] * basis
           pixel[2] += color[2] * basis
       let xyw = x + yw
-      when T is ColorRGBFAny:
-        result[xyw][0] = pixel[0].toFloatSrgb
-        result[xyw][1] = pixel[1].toFloatSrgb
-        result[xyw][2] = pixel[2].toFloatSrgb
+      when r.colorType is (ColorRGBFAny | ColorRGBF64Any):
+        r[xyw][0] = pixel[0].toFloatSrgb
+        r[xyw][1] = pixel[1].toFloatSrgb
+        r[xyw][2] = pixel[2].toFloatSrgb
       else:
-        result[xyw][0] = pixel[0].toUintSrgb
-        result[xyw][1] = pixel[1].toUintSrgb
-        result[xyw][2] = pixel[2].toUintSrgb
+        r[xyw][0] = pixel[0].toUintSrgb
+        r[xyw][1] = pixel[1].toUintSrgb
+        r[xyw][2] = pixel[2].toUintSrgb
       when T is ColorA:
-        result[xyw][3] = T.maxComponentValue
+        r[xyw][3] = T.maxComponentValue
+
+  when r.colorType is T:
+    return r
+  else:
+    return r.to(T)
